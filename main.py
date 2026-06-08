@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -35,30 +34,35 @@ class TutorRequest(BaseModel):
     language: str = "en"
     conversationHistory: list = []
 
-SOCRATIC_PROMPT = """You are a friendly, encouraging AI tutor. Your teaching philosophy:
+class IndexRequest(BaseModel):
+    courseId: str
+    content: str
+    metadata: dict = None
 
-1. NEVER give the complete answer immediately.
-2. Start by understanding what the student already knows.
-3. Break down complex ideas into smaller pieces.
-4. Use analogies and real-world examples.
-5. Ask guiding questions that lead the student to discover the answer themselves.
-6. If the student is stuck, provide hints, not solutions.
-7. Validate correct understanding and gently correct misconceptions.
-8. Keep responses concise and focused.
+SOCRATIC_PROMPT = """You are a helpful, knowledgeable AI tutor integrated into a learning platform.
+
+Your teaching approach:
+1. Give a clear, detailed explanation first — don't just ask questions.
+2. Break down complex topics into simple, digestible parts.
+3. Use examples, analogies, and real-world applications.
+4. After explaining, ask ONE follow-up question to check understanding.
+5. If the student asks for more detail, go deeper.
+6. If the student seems confused, simplify and try a different angle.
+7. Be encouraging and supportive.
+8. Keep responses focused and relevant to the course material.
 
 Course Context: {course_context}
-Current Topic: {current_topic}
 
-Respond in {language}. Be encouraging and supportive."""
+Respond in {language}. Be thorough but not overwhelming."""
 
-PRIMARY_TUTOR_PROMPT = """You are a friendly, patient AI tutor for young children in primary school.
+PRIMARY_TUTOR_PROMPT = """You are a friendly, patient AI tutor for young children.
 
 RULES:
 - Use very simple words and short sentences.
-- Be encouraging and positive. Say "Great job!" and "You're so smart!"
-- Use fun examples with animals, toys, or games.
-- Break things into tiny steps.
-- If the child seems confused, try a different approach.
+- Give clear, simple explanations with fun examples.
+- Use emojis and encouraging words like "Great job!" and "You're so smart!"
+- After explaining, ask one simple question.
+- If the child seems confused, use a different example.
 - Never discuss mature or scary topics.
 
 Course Context: {course_context}
@@ -72,7 +76,7 @@ async def health():
 @app.post("/tutor/ask")
 async def ask_tutor(request: TutorRequest):
     try:
-        course_context = ""
+        course_context = "General academic topics"
         if request.courseId:
             try:
                 results = collection.query(
@@ -80,25 +84,25 @@ async def ask_tutor(request: TutorRequest):
                     n_results=3,
                     where={"courseId": request.courseId}
                 )
-                course_context = "\n".join(results['documents'][0]) if results['documents'] else ""
+                if results['documents'] and results['documents'][0]:
+                    course_context = "\n".join(results['documents'][0])
             except:
                 pass
 
         if request.studentLevel == "primary":
             system_prompt = PRIMARY_TUTOR_PROMPT.format(
-                course_context=course_context or "General primary school topics",
+                course_context=course_context,
                 language=request.language
             )
         else:
             system_prompt = SOCRATIC_PROMPT.format(
-                course_context=course_context or "General academic topics",
-                current_topic="Based on student's question",
+                course_context=course_context,
                 language=request.language
             )
 
         messages = [{"role": "system", "content": system_prompt}]
 
-        for msg in request.conversationHistory[-6:]:
+        for msg in request.conversationHistory[-10:]:
             messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
 
         messages.append({"role": "user", "content": request.question})
@@ -107,7 +111,7 @@ async def ask_tutor(request: TutorRequest):
             model="llama-3.1-8b-instant",
             messages=messages,
             temperature=0.7,
-            max_tokens=500
+            max_tokens=600
         )
 
         reply = response.choices[0].message.content
@@ -125,16 +129,16 @@ async def ask_tutor(request: TutorRequest):
         raise HTTPException(status_code=500, detail=f"AI service error: {str(e)}")
 
 @app.post("/tutor/index-course")
-async def index_course_content(courseId: str, content: str, metadata: dict = None):
+async def index_course_content(request: IndexRequest):
     try:
-        chunks = [content[i:i+500] for i in range(0, len(content), 500)]
+        chunks = [request.content[i:i+500] for i in range(0, len(request.content), 500)]
         for i, chunk in enumerate(chunks):
             collection.add(
                 documents=[chunk],
-                ids=[f"{courseId}_chunk_{i}"],
-                metadatas=[{"courseId": courseId, **(metadata or {})}]
+                ids=[f"{request.courseId}_chunk_{i}"],
+                metadatas=[{"courseId": request.courseId, **(request.metadata or {})}]
             )
-        return {"message": f"Indexed {len(chunks)} chunks for course {courseId}"}
+        return {"message": f"Indexed {len(chunks)} chunks for course {request.courseId}"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
