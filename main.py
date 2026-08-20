@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# On Render, env vars are set directly — no .env file needed
+
 app = FastAPI(title="AI Tutor Service")
 
 app.add_middleware(
