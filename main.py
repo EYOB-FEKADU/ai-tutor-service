@@ -108,7 +108,7 @@ async def ask_tutor(request: TutorRequest):
         messages.append({"role": "user", "content": request.question})
 
         response = await client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model="openai/gpt-oss-20b",
             messages=messages,
             temperature=0.7,
             max_tokens=600
@@ -118,7 +118,7 @@ async def ask_tutor(request: TutorRequest):
 
         return {
             "response": reply,
-            "model": "llama-3.1-8b-instant",
+            "model": "openai/gpt-oss-20b",
             "usage": {
                 "prompt_tokens": response.usage.prompt_tokens,
                 "completion_tokens": response.usage.completion_tokens
