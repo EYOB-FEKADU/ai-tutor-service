@@ -99,6 +99,7 @@ async def ask_tutor(request: TutorRequest):
         else:
             system_prompt = SOCRATIC_PROMPT.format(
                 course_context=course_context,
+                current_lesson=request.lessonId or "General lesson",
                 language=request.language
             )
 
